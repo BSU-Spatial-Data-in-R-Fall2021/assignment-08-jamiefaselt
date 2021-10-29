@@ -102,6 +102,46 @@ mt.census <- tidycensus:: get_acs(geography = "county",
   spread(variable, estimate)
 ```
 
+let's see if I can get this to work with poverty data...
+```{r}
+mt.poverty <- tidycensus:: get_acs(geography = "county", 
+              variables = c(family_poverty = "B17010_002", 
+                            pop = "B01003_001"),
+              state = c("MT", "WY"), 
+              year = 2018,
+              key = key,
+              geometry = TRUE) %>% 
+                st_transform(., crs(mammal.rich)) %>% 
+  select(-moe) %>% 
+  spread(variable, estimate)
+
+
+reg.poverty <- st_make_valid(mt.poverty)
+
+pa.summary.pov<- st_join(st_as_sf(pa.vect), mt.poverty, join = st_overlaps)
+
+pa.summary.pov <- pa.summary.pov %>% 
+  group_by(Unit_Nm) %>% 
+  summarize(., family_poverty = mean(family_poverty, na.rm=TRUE),
+            meanpop = mean(pop, na.rm=TRUE))
+#double check to see that I got the right number of rows
+nrow(pa.summary.pov) ==length(unique(pas$Unit_Nm))
+## [1] TRUE
+pa.zones <- terra::rasterize(pa.vect, mam.rich.crop, field = "Unit_Nm")
+mammal.zones <- terra::zonal(mam.rich.crop, pa.zones, fun = "mean", na.rm=TRUE)
+hmi.zones <- terra::zonal(hmi.crop, pa.zones, fun = "mean", na.rm=TRUE)
+landval.zones <- terra::zonal(mt.val.crop, pa.zones, fun = "mean", na.rm=TRUE)
+#Note that there is one few zone than we have in our PA dataset. This is because we have an overlapping jurisdicition; we'll ingnore that now but it's a common problement with using the PADUS
+
+summary.df.pov <- pa.summary.pov %>% 
+  left_join(., mammal.zones) %>% 
+  left_join(., landval.zones) %>% 
+  left_join(., hmi.zones)
+
+```
+
+
+
 Extract and put everything together into one df
 ```{r}
 pa.summary <- st_join(st_as_sf(pa.vect), mt.census, join = st_overlaps)
@@ -119,12 +159,12 @@ hmi.zones <- terra::zonal(hmi.crop, pa.zones, fun = "mean", na.rm=TRUE)
 landval.zones <- terra::zonal(mt.val.crop, pa.zones, fun = "mean", na.rm=TRUE)
 #Note that there is one few zone than we have in our PA dataset. This is because we have an overlapping jurisdicition; we'll ingnore that now but it's a common problement with using the PADUS
 
-summary.df <- pa.summary %>% 
+summary.df.inc <- pa.summary %>% 
   left_join(., mammal.zones) %>% 
   left_join(., landval.zones) %>% 
   left_join(., hmi.zones)
 
-colnames(summary.df)
+colnames(summary.df.inc)
 ```
 
 
@@ -147,10 +187,60 @@ tm_shape(summary.df) +
 # Task 4: Build a choropleth with ggplot
 Your map should have a basemap, should rely on more than one aesthetic (color, transparency, etc), and combine multiple layers.
 
+```{r}
+ggplot(summary.df.pov) +
+  geom_sf(mapping = aes(fill = family_poverty)) +
+  geom_sf(data=mt, fill=NA,color="black")
+
+ggplot(summary.df) +
+  geom_sf(mapping = aes(fill = meaninc)) +
+  geom_sf(data=mt, fill=NA,color="black")
+
+```
+
+chloroplath 
+```{r}
+bg <- ggmap::get_map(as.vector(st_bbox(mt)))
+
+ggmap(bg) +
+   geom_sf(data = summary.df.pov, mapping = aes(fill = family_poverty), inherit.aes = FALSE) +
+  geom_sf(data=mt, fill=NA,color="black", inherit.aes = FALSE) +
+  coord_sf(crs = st_crs(4326))
+
+ggmap(bg) +
+  geom_sf(data = summary.df.pov, mapping = aes(fill = Value, 
+                                           alpha = (landvalrastmtwy - max(landvalrastmtwy, na.rm=TRUE))/(max(landvalrastmtwy, na.rm=TRUE)-min(landvalrastmtwy, na.rm = TRUE))), inherit.aes = FALSE) +
+  geom_sf(data=mt, fill=NA,color="black", inherit.aes = FALSE) +
+  scale_fill_viridis(option="magma")+
+  coord_sf(crs = st_crs(4326))
+```
+
 
 
 # Task 5: Build 2 cartograms
 Follow the examples to build cartograms that display your region of interest based on variables other than area.
+
+```{r}
+mt.pop <- cartogram_cont(mt.census, "pop", itermax = 5)
+
+mt.inc <- cartogram_cont(mt.census, "medianincome", itermax = 5)
+
+mt.pov <- cartogram_cont(mt.poverty, "family_poverty", itermax = 5)
+
+tm_shape(mt.pop) + tm_polygons("pop", style = "jenks") +
+  tm_layout(frame = FALSE, legend.position = c("left", "bottom")) 
+
+tm_shape(mt.inc) + tm_polygons("medianincome", style = "jenks") +
+  tm_layout(frame = FALSE, legend.position = c("left", "bottom")) 
+
+
+tm_shape(mt.pov) + tm_polygons("family_poverty", style = "jenks") +
+  tm_layout(frame = FALSE, legend.position = c("left", "bottom")) 
+
+```
+
+
+
 
 _Question 3:_ Reflect on the different maps you've made, what do the different visualizations tell you about the data you plotted?
 
