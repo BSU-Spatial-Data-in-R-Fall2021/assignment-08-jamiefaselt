@@ -39,10 +39,11 @@ Find 2 examples of maps that you think are 'bad'.
 ![badmap2](badmap1.jpg)
 
 _Question 1_ Why are they bad? What might improve them? 
-The first one has way too much information. It goes against the practice of proportional ink-- it is essentially all ink which loses any meaning. The color is also all blue/grey and the symbols are too large. 
+The first map is trying to do way too much. My interpretation is that it has taken three datasets, high school graduates, college graduates, and median household income. The infographic then combines the colors for each county. While looking at the relationship of educational attainment and income has merit as a question, combining the data in this way was not an effective way to show that relationship. It is also not clear that the county level was any more interesting than say the state level. One option to improve could have been creating a ratio of education to income and normalizing that with one color scheme so places could more readily be compared to one another.
+
 
 _Question 2_ Rely on the Healy and Wilke texts to provide some structure to your answers.
-The second map is also a case of less is more. I think they are attempting to join three different colored maps into one colored schemes and that is also just not how humans can think.
+The second map (as well as the first) goes against the rule of proportional ink, the symbols are giant and its just one big blob of grey. You don't get any information from this other than a takeaway that Belgium has a lot of churches, which isn't particularly interesting. 
 
 # Task 2: Load your libraries and build a dataframe
 You can choose whichever datasets you'd like from the past several months as the subject for your mapping. You'll need to use at least one tabular join, one spatial join, and one extraction to create the dataframe. Load the packages, the data, and make sure everything is projected here. Give me a sense for what you are hoping to map.
@@ -74,23 +75,30 @@ Bring in a map of Montana and match our projections
 mt <- tigris::states(cb=TRUE) %>% 
   filter(STUSPS == "MT") 
 
+# make spatvectors
 st_crs(mammal.rich)$proj4string
 pa.vect <- as(pas, "SpatVector")
 mt.vect <- as(mt, "SpatVector")
 
+# project to match mammal richness
 pa.vect <- project(pa.vect, mammal.rich)
 mt.vect <- project(mt.vect, mammal.rich)
-
 land.val.proj <- project(landval, mammal.rich)
 hmi.proj <- project(hmi, mammal.rich)
+
+#crop to match montana
 mam.rich.crop <- crop(mammal.rich, mt.vect)
 mt.val.crop <- crop(land.val.proj, mt.vect)
 hmi.crop <- crop(hmi.proj, mt.vect)
+
+plot(mam.rich.crop)
+plot(mt.vect, add=TRUE)
+plot(pa.vect, add=TRUE)
 ```
 
 Add some tidy census variables
 ```{r}
-mt.census <- tidycensus:: get_acs(geography = "county", 
+mt.income <- tidycensus:: get_acs(geography = "county", 
               variables = c(medianincome = "B19013_001", # I tried pretty hard to get this to be % poverty but kept getting errors :(
                             pop = "B01003_001"),
               state = c("MT"), 
@@ -127,11 +135,16 @@ pa.summary.pov <- pa.summary.pov %>%
 #double check to see that I got the right number of rows
 nrow(pa.summary.pov) ==length(unique(pas$Unit_Nm))
 ## [1] TRUE
+
+```
+
+Run zonal statistics
+```{r}
 pa.zones <- terra::rasterize(pa.vect, mam.rich.crop, field = "Unit_Nm")
 mammal.zones <- terra::zonal(mam.rich.crop, pa.zones, fun = "mean", na.rm=TRUE)
 hmi.zones <- terra::zonal(hmi.crop, pa.zones, fun = "mean", na.rm=TRUE)
 landval.zones <- terra::zonal(mt.val.crop, pa.zones, fun = "mean", na.rm=TRUE)
-#Note that there is one few zone than we have in our PA dataset. This is because we have an overlapping jurisdicition; we'll ingnore that now but it's a common problement with using the PADUS
+#Note that there is one few zone than we have in our PA dataset. This is because we have an overlapping jurisdicition; we'll ingnore that now but it's a common problemen with using the PADUS
 
 summary.df.pov <- pa.summary.pov %>% 
   left_join(., mammal.zones) %>% 
@@ -141,17 +154,16 @@ summary.df.pov <- pa.summary.pov %>%
 ```
 
 
-
 Extract and put everything together into one df
 ```{r}
-pa.summary <- st_join(st_as_sf(pa.vect), mt.census, join = st_overlaps)
+pa.summary.income <- st_join(st_as_sf(pa.vect), mt.income, join = st_overlaps)
 
-pa.summary <- pa.summary %>% 
+pa.summary.income <- pa.summary.income %>% 
   group_by(Unit_Nm) %>% 
   summarize(., meaninc = mean(medianincome, na.rm=TRUE),
             meanpop = mean(pop, na.rm=TRUE))
 #double check to see that I got the right number of rows
-nrow(pa.summary) ==length(unique(pas$Unit_Nm))
+nrow(pa.summary.income) ==length(unique(pas$Unit_Nm))
 ## [1] TRUE
 pa.zones <- terra::rasterize(pa.vect, mam.rich.crop, field = "Unit_Nm")
 mammal.zones <- terra::zonal(mam.rich.crop, pa.zones, fun = "mean", na.rm=TRUE)
@@ -159,7 +171,7 @@ hmi.zones <- terra::zonal(hmi.crop, pa.zones, fun = "mean", na.rm=TRUE)
 landval.zones <- terra::zonal(mt.val.crop, pa.zones, fun = "mean", na.rm=TRUE)
 #Note that there is one few zone than we have in our PA dataset. This is because we have an overlapping jurisdicition; we'll ingnore that now but it's a common problement with using the PADUS
 
-summary.df.inc <- pa.summary %>% 
+summary.df.inc <- pa.summary.income %>% 
   left_join(., mammal.zones) %>% 
   left_join(., landval.zones) %>% 
   left_join(., hmi.zones)
@@ -177,7 +189,7 @@ tm_shape(mam.rich.crop) +
   tm_raster("Value", palette = viridis(n=50), n=50, legend.show=FALSE, legend.hist = TRUE, legend.hist.title = "Species Richness") +
 tm_shape(mt) +
   tm_borders("white", lwd = .75) +
-tm_shape(summary.df) +
+tm_shape(summary.df.inc) +
   tm_polygons(col = "meaninc",  border.col = "white", title="Mean Income") + 
   tm_legend(outside = TRUE)
 
@@ -192,7 +204,7 @@ ggplot(summary.df.pov) +
   geom_sf(mapping = aes(fill = family_poverty)) +
   geom_sf(data=mt, fill=NA,color="black")
 
-ggplot(summary.df) +
+ggplot(summary.df.inc) +
   geom_sf(mapping = aes(fill = meaninc)) +
   geom_sf(data=mt, fill=NA,color="black")
 
@@ -200,7 +212,7 @@ ggplot(summary.df) +
 
 chloroplath 
 ```{r}
-bg <- ggmap::get_map(as.vector(st_bbox(mt)))
+bg <- ggmap::get_map(as.vector(st_bbox(mt))) # basemap
 
 ggmap(bg) +
    geom_sf(data = summary.df.pov, mapping = aes(fill = family_poverty), inherit.aes = FALSE) +
@@ -221,20 +233,22 @@ ggmap(bg) +
 Follow the examples to build cartograms that display your region of interest based on variables other than area.
 
 ```{r}
-mt.pop <- cartogram_cont(mt.census, "pop", itermax = 5)
+mt.pop <- cartogram_cont(mt.income, "pop", itermax = 5)
 
-mt.inc <- cartogram_cont(mt.census, "medianincome", itermax = 5)
+mt.inc <- cartogram_cont(mt.income, "medianincome", itermax = 5)
 
 mt.pov <- cartogram_cont(mt.poverty, "family_poverty", itermax = 5)
 
-tm_shape(mt.pop) + tm_polygons("pop", style = "jenks") +
+# cartogram based on population
+tm_shape(mt.pop) + tm_polygons("pop", style = "jenks", title="Population") +
   tm_layout(frame = FALSE, legend.position = c("left", "bottom")) 
 
-tm_shape(mt.inc) + tm_polygons("medianincome", style = "jenks") +
+# cartogram based on median income
+tm_shape(mt.inc) + tm_polygons("medianincome", style = "jenks", title="Median Household Income") +
   tm_layout(frame = FALSE, legend.position = c("left", "bottom")) 
 
-
-tm_shape(mt.pov) + tm_polygons("family_poverty", style = "jenks") +
+# cartogram based on family poverty
+tm_shape(mt.pov) + tm_polygons("family_poverty", style = "jenks", title = "Family Poverty Rates") +
   tm_layout(frame = FALSE, legend.position = c("left", "bottom")) 
 
 ```
@@ -243,9 +257,12 @@ tm_shape(mt.pov) + tm_polygons("family_poverty", style = "jenks") +
 
 
 _Question 3:_ Reflect on the different maps you've made, what do the different visualizations tell you about the data you plotted?
+Base on the data plotted, Montana has higher species richness in the western part of the state and that income in areas surrounding PAs also appears to be higher for the western part of the state. Poverty rates also seemed to follow that same trend. 
 
 _Question 4:_ How might you improve the maps you've made?
+I am not sure if I did the baseplot map incorrectly but I found that one the least interesting. Visualizing the data in that way made it seem like being a protected area was the function of poverty, but it would be more interesting to see that if it is a regional thing or truly something correlated to PA status. I would also change the color to be on a red-orange scale since my mind biases blue towarsd something positive which family poverty is not. With more time I would have also created maps to compare things like HMI instead of just land value.
+
 
 _Question 5:_ Is a map the best way to evaluate the data you worked with? Why or Why not?
-
+I think using maps was pretty appropriate for the purposes of this assignment. I was not as impressed with overlaying the data with the opaque blocks such as the species richness poverty maps. These cartograms were more interesting and straight forward to interpret than some of the earlier maps and overall this assignment is useful for assessing some intiial potential trends but looking at more mathematical relationships and visualizing things that way could provide more meaningful data.
 
