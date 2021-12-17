@@ -45,12 +45,15 @@ The first map is trying to do way too much. My interpretation is that it has tak
 _Question 2_ Rely on the Healy and Wilke texts to provide some structure to your answers.
 The second map (as well as the first) goes against the rule of proportional ink, the symbols are giant and its just one big blob of grey. You don't get any information from this other than a takeaway that Belgium has a lot of churches, which isn't particularly interesting. 
 
+__MW: These are terrible. I couldn't even tell where the second map was because all of the landmarks were obscured. In the first map, something like a bivariate map rather than this weird blend might have been helpful.
+
 # Task 2: Load your libraries and build a dataframe
 You can choose whichever datasets you'd like from the past several months as the subject for your mapping. You'll need to use at least one tabular join, one spatial join, and one extraction to create the dataframe. Load the packages, the data, and make sure everything is projected here. Give me a sense for what you are hoping to map.
 
 ```{r, echo=FALSE} 
 r <- terra::rast("temp_rstr.tif") #using my template raster for research -- lol jk this is causing all sorts of issues
-landval <- terra::rast("landvalrastmtwy.tif") #needed to get a different state and I had to crop the file from the boston lab to mt 
+landval <- terra::rast("landvalrastmt.tif") #needed to get a different state and I had to crop the file from the boston lab to mt #incorrect pathname and no way to track whether you did this cropping correctly. 
+
 mammal.rich <- rast("/opt/data/session16/Mammals_total_richness.tif")
 hmi <- rast("/opt/data/session08/hmi.tif")
 mammal.rich <- catalyze(mammal.rich)
@@ -108,6 +111,7 @@ mt.income <- tidycensus:: get_acs(geography = "county",
                 st_transform(., crs(mammal.rich)) %>% 
   select(-moe) %>% 
   spread(variable, estimate)
+#your key is mising
 ```
 
 let's see if I can get this to work with poverty data...
@@ -227,7 +231,7 @@ ggmap(bg) +
   coord_sf(crs = st_crs(4326))
 ```
 
-
+__MW: As is indicated by the warnings and the resulting map, there is a problem with the way you calculated the alpha resulting in a map that has only one functioning aesthetic (instead of the two requested in the instructions.)
 
 # Task 5: Build 2 cartograms
 Follow the examples to build cartograms that display your region of interest based on variables other than area.
@@ -262,6 +266,7 @@ Base on the data plotted, Montana has higher species richness in the western par
 _Question 4:_ How might you improve the maps you've made?
 I am not sure if I did the baseplot map incorrectly but I found that one the least interesting. Visualizing the data in that way made it seem like being a protected area was the function of poverty, but it would be more interesting to see that if it is a regional thing or truly something correlated to PA status. I would also change the color to be on a red-orange scale since my mind biases blue towarsd something positive which family poverty is not. With more time I would have also created maps to compare things like HMI instead of just land value.
 
+__MW: Your answer highlights an important challenge with maps. You've interpreted the map as if poverty causes protected areas, another person might see the same map and say protected areas drive poverty (this is a common argument, actually). Maps can't tell us much about causation on their own,only patterns leaving us to tell ourselves stories colored by our own experiences and worldviews. Accompanying maps with actual analysis can help, but even then there are issues.__
 
 _Question 5:_ Is a map the best way to evaluate the data you worked with? Why or Why not?
 I think using maps was pretty appropriate for the purposes of this assignment. I was not as impressed with overlaying the data with the opaque blocks such as the species richness poverty maps. These cartograms were more interesting and straight forward to interpret than some of the earlier maps and overall this assignment is useful for assessing some intiial potential trends but looking at more mathematical relationships and visualizing things that way could provide more meaningful data.
